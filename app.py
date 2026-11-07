@@ -1,6 +1,7 @@
 """Painel de otimização — janela desktop. Uso: python app.py
-Ordem: 1) pywebview + WebView2 (sem borda)  2) Edge/Chrome modo app  3) navegador padrão."""
-import ctypes, glob, hashlib, json, os, re, secrets, shutil, sqlite3, stat, subprocess, sys, tempfile, threading, time, uuid, webbrowser
+Ordem: 1) pywebview + WebView2 (sem borda)  2) Edge/Chrome modo app  3) navegador padrão.
+Licença: o app lê um canal privado do Discord (bot só-leitura); veja BOT_TOKEN e CANAL mais abaixo."""
+import unicodedata, ctypes, glob, hashlib, hmac, json, os, re, secrets, shutil, sqlite3, stat, subprocess, sys, tempfile, threading, time, uuid, webbrowser
 from ctypes import wintypes as wt
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -201,25 +202,40 @@ body.calm *,body.calm *::before,body.calm *::after{animation-duration:.01s!impor
 @keyframes dr{from{stroke-dashoffset:60}}
 button:focus-visible{outline:2px solid var(--fg);outline-offset:3px}
 
-/* login */
+/* login / ativação / carregamento */
 body.locked main{visibility:hidden}
 #lg{position:fixed;inset:0;z-index:15;display:grid;place-items:center;padding:20px;pointer-events:none;transition:opacity .6s var(--e),transform .8s var(--e)}
 body:not(.locked) #lg{opacity:0;transform:scale(1.05);visibility:hidden;transition:opacity .6s var(--e),transform .8s var(--e),visibility 0s .8s}
-#lf{width:min(360px,100%);display:flex;flex-direction:column;gap:34px;pointer-events:auto}
-#lf>*{animation:li 1s var(--e) backwards}
-#lf>:nth-child(1){animation-delay:.3s}#lf>:nth-child(2){animation-delay:.5s}
+#lf,#ac{width:min(360px,100%);flex-direction:column;pointer-events:auto}
+#lf{gap:34px}#ac{gap:18px}
+#ld{flex-direction:column;align-items:center;gap:22px;animation:li .6s var(--e) backwards}
+#lg>*{display:none}
+#lg[data-s=ld]>#ld,#lg[data-s=ac]>#ac,#lg[data-s=lf]>#lf{display:flex}
+#lf>*,#ac>*{animation:li 1s var(--e) backwards}
+#lf>:nth-child(1),#ac>:nth-child(1){animation-delay:.3s}#lf>:nth-child(2),#ac>:nth-child(2){animation-delay:.5s}
+.ring{width:52px;height:52px;border-radius:50%;border:2px solid var(--bd);border-top-color:var(--fg);animation:spin 1s linear infinite}
+.ring,body.calm .ring{animation-duration:1s!important}
+@keyframes spin{to{transform:rotate(360deg)}}
 .fld{position:relative;display:block;border-bottom:1px solid var(--bd)}
 .fld input{width:100%;background:none;border:0;outline:none;padding:22px 0 9px;font-size:20px;font-weight:300}
 .fld span{position:absolute;left:0;top:22px;font-size:20px;font-weight:300;color:var(--mut);pointer-events:none;transform-origin:left;transition:transform .5s var(--e),color .4s}
 .fld input:focus+span,.fld input:not(:placeholder-shown)+span{transform:translateY(-20px) scale(.65);color:var(--fg)}
 .fld i{position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--fg);transform:scaleX(0);transform-origin:left;transition:transform .7s var(--e)}
 .fld input:focus~i{transform:scaleX(1)}
-#lf .go{width:100%}
+#ak{font-size:15px}
+#lf .go,#ac .go{width:100%}
 #lf .go canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 #lf .go b{position:relative;font-weight:inherit}
+.code{font-size:22px;font-weight:300;letter-spacing:.04em;font-variant-numeric:tabular-nums;word-break:break-all}
+.hint{font-size:13px;line-height:1.5;color:var(--mut)}
+.er{display:block;min-height:16px;font-size:13px;text-align:center;color:var(--fg)}
+.row2{display:flex;gap:10px}.row2 .btn{flex:1;padding:11px 10px}
+.row .acts{gap:6px}.row .acts .btn{padding:6px 14px;font-size:13px}
+.note input{flex:1;min-width:0;background:none;border:0;border-bottom:1px solid var(--bd);outline:none;padding:6px 0}
+.sch{margin:18px 0 4px}#emdl .fld input{font-size:17px}#emdl .row{cursor:default}#emdl .macts{margin-top:20px}
 
 @media(max-width:820px){.top{padding:12px 14px}.logo{width:auto}.logo span{display:none}.right{width:auto}nav button,.inv span{padding:8px 10px;font-size:13px}main{padding:84px 16px 30px}.ms,.ms.three{grid-template-columns:repeat(2,1fr)}.val{min-width:60px}}
-@media(prefers-reduced-motion:reduce){*{animation-duration:.01s!important;transition-duration:.01s!important}}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01s!important;transition-duration:.01s!important}.ring{animation-duration:1s!important}}
 </style>
 </head>
 <body class="locked">
@@ -227,17 +243,26 @@ body:not(.locked) #lg{opacity:0;transform:scale(1.05);visibility:hidden;transiti
 <header class="top pywebview-drag-region">
   <div class="logo"><i></i><span>Tellez</span></div>
   <nav id="nav"><span class="pill" id="pill"></span>
-    <button class="on" data-v="dash">Painel</button><button data-v="clean">Limpeza</button><button data-v="win">Windows</button><button data-v="per">Periféricos</button><button data-v="cfg">Configurações</button>
-    <div class="inv" id="inv" aria-hidden="true"><span>Painel</span><span>Limpeza</span><span>Windows</span><span>Periféricos</span><span>Configurações</span></div>
+    <button class="on" data-v="dash">Painel</button><button data-v="clean">Limpeza</button><button data-v="win">Windows</button><button data-v="per">Periféricos</button><button data-v="cfg">Configurações</button><button data-v="adm" id="nadm" hidden>Admin</button>
+    <div class="inv" id="inv" aria-hidden="true"><span>Painel</span><span>Limpeza</span><span>Windows</span><span>Periféricos</span><span>Configurações</span><span id="nadm2" hidden>Admin</span></div>
   </nav>
   <div class="right"><button class="tg" id="tg" aria-label="Alternar tema"><b></b></button>
     <button class="wc" id="wmin" aria-label="Minimizar"><svg viewBox="0 0 14 14"><path d="M2 7h10"/></svg></button>
     <button class="wc" id="wcls" aria-label="Fechar"><svg viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9"/></svg></button></div>
 </header>
-<div id="lg"><form id="lf" autocomplete="off" novalidate>
+<div id="lg" data-s="ld">
+<div id="ld"><i class="ring"></i><div class="lb" id="ldt">Iniciando…</div></div>
+<div id="ac">
+  <div><div class="lb">SID deste PC</div><div class="code" id="pc" style="font-size:16px;letter-spacing:0">—</div></div>
+  <button class="btn" id="cp" type="button">Copiar SID</button>
+  <small class="er" id="aer"></small>
+</div>
+<form id="lf" autocomplete="off" novalidate>
   <label class="fld"><input id="lu" type="text" placeholder=" " maxlength="24" spellcheck="false" autocomplete="off"><span>Usuário</span><i></i></label>
-  <button class="go" type="submit"><canvas id="lgb"></canvas><b>Login</b></button>
-</form></div>
+  <button class="go" type="submit"><b>Login</b></button>
+  <small class="er" id="ler"></small>
+</form>
+</div>
 <main id="main"><div class="wrap">
   <section class="view on" id="v-dash">
     <div class="lead"><div><div class="lb">Saúde do sistema</div><div class="big" id="score">0</div></div>
@@ -291,8 +316,24 @@ body:not(.locked) #lg{opacity:0;transform:scale(1.05);visibility:hidden;transiti
       <div class="acts"><button class="btn" id="cfgreset">Restaurar padrões</button></div></div>
     <div id="cfgl"></div>
   </section>
+  <section class="view" id="v-adm">
+    <div class="lead"><div><div class="lb">Usuários liberados</div><div class="big" id="atot">0</div></div>
+      <div class="mid" id="amid">Carregando…</div>
+      <div class="acts"><button class="btn" id="aref">Atualizar</button><button class="btn" id="atk">Token admin</button><button class="btn solid" id="aadd">Adicionar</button></div></div>
+    <div class="note" id="atkn" hidden><input id="atki" type="password" placeholder="Token do bot admin (fica só neste PC)" autocomplete="off" spellcheck="false"><button class="btn" id="atks">Salvar</button></div>
+    <label class="fld sch"><input id="aq" type="text" placeholder=" " spellcheck="false" autocomplete="off"><span>Buscar por usuário ou SID</span><i></i></label>
+    <div id="al"></div>
+  </section>
 </div></main>
 <div id="toast"></div>
+<div class="mdl" id="emdl" role="dialog" aria-modal="true"><div class="card">
+  <h2 id="eh">Editar usuário</h2><p class="sub">O usuário precisa ser digitado igual no login.</p>
+  <label class="fld"><input id="esid" type="text" placeholder=" " spellcheck="false" autocomplete="off"><span>SID</span><i></i></label>
+  <label class="fld"><input id="euser" type="text" placeholder=" " maxlength="24" spellcheck="false" autocomplete="off"><span>Usuário</span><i></i></label>
+  <label class="row"><div class="n">Administrador<small>Vê a aba Admin e gerencia os usuários</small></div><input type="checkbox" class="sw" id="eadm"></label>
+  <label class="row"><div class="n">Suspenso<small>Não consegue entrar enquanto estiver suspenso</small></div><input type="checkbox" class="sw" id="eoff"></label>
+  <div class="macts"><button class="btn" id="eno">Cancelar</button><button class="btn solid" id="eyes">Salvar</button></div>
+</div></div>
 <div class="mdl" id="xmdl" role="dialog" aria-modal="true"><div class="card wide">
   <h2>Aplicar ajustes</h2><p class="sub">Confira as alterações. Desmarque o que não quiser:</p>
   <div class="mlist" id="xlist"></div>
@@ -397,22 +438,11 @@ function draw2d(){
   ctx.clearRect(0,0,W,H);ctx.lineJoin='round';
   contours(ctx,grid,cx,cy,s,cfg.theme=='dark'?'255,255,255':'0,0,0',.34,.15);
 }
-/* arte do botão de login: mesma paisagem do fundo, em cor invertida */
-let artUntil=1/0,artGrid;const lgb=$('#lgb'),lgg=lgb.getContext('2d');
-function art(){
-  const r=lgb.getBoundingClientRect();if(!r.width)return;
-  const w=Math.round(r.width*DPR),h=Math.round(r.height*DPR);if(lgb.width!=w||lgb.height!=h){lgb.width=w;lgb.height=h}
-  const s=6,cx=Math.ceil(r.width/s)+1,cy=Math.ceil(r.height/s)+1,len=(cx+1)*(cy+1);
-  if(!artGrid||artGrid.length!=len)artGrid=new Float32Array(len);
-  for(let j=0;j<=cy;j++)for(let i=0;i<=cx;i++)artGrid[j*(cx+1)+i]=fld(r.left+i*s,r.top+j*s,T);
-  lgg.setTransform(DPR,0,0,DPR,0,0);lgg.clearRect(0,0,r.width,r.height);lgg.lineJoin='round';
-  contours(lgg,artGrid,cx,cy,s,cfg.theme=='dark'?'12,12,12':'211,211,211',.7,.35);
-}
 function frame(){
   morph*=.985;T+=.0011*(cfg.speed+morph);
   if(sx<-900){sx=mx;sy=my}else{sx+=(mx-sx)*.035;sy+=(my-sy)*.035}
   if(!cfg.bg){}else if(GL){GL.uniform2f(U.uM,sx,sy);GL.uniform1f(U.uT,T);GL.clear(GL.COLOR_BUFFER_BIT);GL.drawArrays(GL.TRIANGLES,0,3)}else draw2d();
-  stepPill();if(cur=='dash')spark();if(performance.now()<artUntil)art();
+  stepPill();if(cur=='dash')spark();
   requestAnimationFrame(frame);
 }
 
@@ -436,7 +466,7 @@ function spark(){const d=devicePixelRatio||1,c=sparkEl,w=c.clientWidth*d,h=c.cli
   [[hc,[]],[hr,[6*d,7*d]]].forEach(([a,dash])=>{sctx.setLineDash(dash);sctx.beginPath();a.forEach((v,i)=>{const px=(i+60-a.length+1-f)/59*w,py=h-6*d-v/100*(h-12*d);i?sctx.lineTo(px,py):sctx.moveTo(px,py)});sctx.stroke()})}
 
 /* navegação e pílula elástica */
-const order=['dash','clean','win','per','cfg'],navBtns=$$('#nav button'),nav=$('#nav'),pillEl=$('#pill'),inv=$('#inv');let cur='dash';
+const order=['dash','clean','win','per','cfg','adm'],navBtns=$$('#nav button'),nav=$('#nav'),pillEl=$('#pill'),inv=$('#inv');let cur='dash';
 const sp={l:0,r:0,vl:0,vr:0,tl:0,tr:0,kl:220,kr:220,on:0,t:0};
 function pill(snap){const b=$('#nav .on');sp.tl=b.offsetLeft;sp.tr=b.offsetLeft+b.offsetWidth;const d=sp.tl>sp.l?1:-1;sp.kl=d>0?140:340;sp.kr=d>0?340:140;
   if(snap===true||!sp.on){sp.l=sp.tl;sp.r=sp.tr;sp.vl=sp.vr=0;sp.on=1;drawPill()}}
@@ -452,7 +482,7 @@ navBtns.forEach(b=>b.onclick=()=>{const v=b.dataset.v;if(v==cur)return;
   const old=$('#v-'+cur);old.classList.remove('on');old.classList.add('off');setTimeout(()=>old.classList.remove('off'),420);
   $('#nav .on').classList.remove('on');b.classList.add('on');cur=v;pill();
   const el=$('#v-'+v);finishDraw(old);el.classList.add('on');drawView(el);main.scrollTop=0;morph=1.8;
-  if(v=='clean')enterClean();if(v=='win')enterWin();if(v=='per')enterPer();if(v=='cfg')enterCfg();
+  if(v=='clean')enterClean();if(v=='win')enterWin();if(v=='per')enterPer();if(v=='cfg')enterCfg();if(v=='adm')enterAdm();
   if(v=='dash'){$$('.t i').forEach(i=>i.style.width='0');$$('.num').forEach(n=>n._c=0);score._c=0;score.textContent='0';setTimeout(()=>{paint();tween(score,lastSc,Math.round,1200)},1000)}});
 
 /* limpeza: tudo vem do servidor (descoberta automática de pastas e navegadores no PC de cada usuário) */
@@ -658,7 +688,6 @@ CFG=[
   {k:'calm',t:'sw',n:'Modo sem animações',i:'Desliga transições e animações. Ideal para PCs mais fracos.'}]],
  ['Comportamento',[
   {k:'startTab',t:'seg',n:'Aba inicial',i:'Aba aberta logo depois do login.',o:[['dash','Painel'],['clean','Limpeza'],['win','Windows'],['per','Periféricos']]},
-  {k:'autologin',t:'sw',n:'Entrar automaticamente',i:'Pula a tela de login usando o último usuário.'},
   {k:'confirm',t:'sw',n:'Confirmar antes de Otimizar agora',i:'Mostra o resumo do que será feito. Limpeza e ajustes sempre pedem confirmação.'},
   {k:'autoscan',t:'sw',n:'Analisar ao abrir as abas',i:'Escaneia sozinho ao abrir Limpeza, Windows e Periféricos. Desligado, use os botões.'},
   {k:'toast',t:'sw',n:'Avisos na tela',i:'Mostra o resultado depois de cada ação.'},
@@ -668,7 +697,6 @@ CFG=[
  ['Dados e segurança',[
   {t:'btn',a:'revall',b:'Reverter',n:'Reverter todos os ajustes',i:'Desfaz tudo que o Tellez aplicou nas abas Windows e Periféricos, usando os valores originais guardados.'},
   {t:'btn',a:'folder',b:'Abrir',n:'Pasta de backups',i:'Abre a pasta com os valores originais guardados antes de cada ajuste.'},
-  {t:'btn',a:'logout',b:'Sair',n:'Trocar de usuário',i:'Volta para a tela de login.'},
   {t:'btn',a:'elev',b:'Reiniciar como administrador',n:'Permissão de administrador',i:'Libera ajustes de sistema, serviços, energia e DISM/SFC.'}]],
  ['Sobre',[
   {t:'txt',id:'cfgadm',n:'Tellez',i:'Painel de otimização para Windows. Tudo que é alterado pode ser revertido.'}]]],
@@ -701,7 +729,6 @@ async function cfgAct(b){const a=b.dataset.a;
     wSeed=xSeed=false;post('/api/windows/analisar');
     toast(`${r.revertidos} ${r.revertidos==1?'ajuste revertido':'ajustes revertidos'}${r.admin?` · ${r.admin} exigem administrador`:''}${r.falhas?` · ${r.falhas} falharam`:''}${r.revertidos?' · reinicie o PC para concluir':''}`)}
   else if(a=='folder'){if(!PCData.real){toast('Disponível apenas no Windows');return}const r=await post('/api/cfg/pasta');if(!r||!r.ok)toast('Não foi possível abrir a pasta')}
-  else if(a=='logout'){document.body.classList.add('locked');lu.value=cfg.user||'';setTimeout(()=>lu.focus({preventScroll:true}),400)}
   else if(a=='elev'){const r=await post('/api/admin/elevar');toast(r&&r.ok?'Reabrindo como administrador…':'Permissão não concedida')}}
 $('#cfgreset').onclick=()=>{try{localStorage.painel_cfg=JSON.stringify({user:cfg.user})}catch(e){}location.reload()};
 async function enterCfg(){let adm=null;
@@ -866,7 +893,9 @@ $('#wmin').onclick=()=>callApi('minimizar');$('#wcls').onclick=()=>callApi('fech
 if(window.pywebview)showWC();addEventListener('pywebviewready',showWC);
 try{const w=Math.round(screen.width*.5385),h=Math.round(screen.height*.6657);
   if(Math.abs(outerWidth-w)>6||Math.abs(outerHeight-h)>6){resizeTo(w,h);moveTo(Math.round((screen.width-w)/2),Math.round((screen.height-h)/2))}}catch(e){}
-(async function poll(){
+/* leitura dos dados só começa depois do login (o servidor recusa antes disso) */
+let polling=0;
+async function poll(){
   try{
     const r=await fetch('/api/dados',{cache:'no-store'});if(!r.ok)throw 0;
     const d=await r.json();PCData.real=true;
@@ -877,13 +906,75 @@ try{const w=Math.round(screen.width*.5385),h=Math.round(screen.height*.6657);
     if(!PCData.real){showNames({cpu:'Valores simulados',ram:'Valores simulados',gpu:'Valores simulados',disk:'Valores simulados',temp:'Valores simulados'});update();setInterval(update,1100);return}
   }
   setTimeout(poll,cfg.poll||1000);
-})();
-const lu=$('#lu');lu.value=cfg.user||'';if(cfg.autologin&&cfg.user)setTimeout(()=>$('#lf').requestSubmit(),80);
-$('#lf').onsubmit=e=>{e.preventDefault();const u=lu.value.trim();
-  if(!u){$('.fld').animate([{transform:'translateX(0)'},{transform:'translateX(-8px)'},{transform:'translateX(8px)'},{transform:'translateX(0)'}],{duration:350});lu.focus();return}
-  cfg.user=u;save();lu.blur();document.body.classList.remove('locked');artUntil=performance.now()+900;pill(true);drawView($('#v-dash'));if(cfg.startTab&&cfg.startTab!='dash'){const b=$('#nav button[data-v="'+cfg.startTab+'"]');b&&setTimeout(()=>b.click(),60)}};
-setTimeout(()=>lu.focus({preventScroll:true}),900);pill(true);document.fonts&&document.fonts.ready.then(()=>pill(true));
-frame();
+}
+const startPoll=()=>{if(!polling){polling=1;poll()}};
+
+/* licença: SID do PC -> liberação (se não está no canal) -> login com o usuário que está junto ao SID */
+const lu=$('#lu'),setS=s=>$('#lg').dataset.s=s,er=(i,t='')=>{$(i).textContent=t},
+MSG={nao:'Aguardando liberação…',rede:'Sem conexão com o Discord. Tentando de novo…',config:'Erro de configuração do bot (token ou canal).'},
+shake=el=>el.animate([{transform:'translateX(0)'},{transform:'translateX(-8px)'},{transform:'translateX(8px)'},{transform:'translateX(0)'}],{duration:350});
+function entrar(u){$('#ldt').textContent='Entrando…';setS('ld');cfg.user=u;save();document.body.classList.remove('locked');pill(true);drawView($('#v-dash'));toast('Bem-vindo, '+u);startPoll();
+  if(cfg.startTab&&cfg.startTab!='dash'){const b=$('#nav button[data-v="'+cfg.startTab+'"]');b&&setTimeout(()=>b.click(),60)}}
+async function boot(first=1){
+  if(first){setS('ld');$('#ldt').textContent='Iniciando…';await wait(600);$('#ldt').textContent='Verificando licença…'}
+  const [r]=await Promise.all([post('/api/lic/verificar'),first?wait(900):0]);
+  if(r)$('#pc').textContent=r.pc;
+  if(r&&r.ok){lu.value=cfg.user||'';er('#ler');setS('lf');setTimeout(()=>lu.focus({preventScroll:true}),500);return}
+  setS('ac');er('#aer',MSG[r?r.motivo:'rede']||'');
+  setTimeout(()=>boot(0),r&&r.motivo=='nao'?8000:5000)}
+$('#cp').onclick=async()=>{const t=$('#pc').textContent,b=$('#cp');
+  try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.append(a);a.select();document.execCommand('copy');a.remove()}
+  b.textContent='Copiado';setTimeout(()=>b.textContent='Copiar SID',1800)};
+$('#lf').onsubmit=async e=>{e.preventDefault();const u=lu.value.trim();er('#ler');
+  if(!u){shake(lu.closest('.fld'));lu.focus();return}
+  lu.blur();setS('ld');$('#ldt').textContent='Entrando…';
+  const [r]=await Promise.all([post('/api/lic/login',{user:u}),wait(1000)]);
+  if(r&&r.ok){wasAdm=!!r.admin;if(r.admin)$('#nadm').hidden=$('#nadm2').hidden=false;return entrar(u)}
+  if(r&&r.motivo=='nao')return boot();
+  setS('lf');er('#ler',r&&r.motivo=='user'?'User não encontrado':MSG[r?r.motivo:'rede']);shake(lu.closest('.fld'));lu.focus()};
+/* admin: lista e edita quem está liberado no canal (a aba só aparece para quem tem /admin; o servidor também confere) */
+let AD=null;
+const adm=(op,b)=>post('/api/adm/'+op,b||{}),aq=$('#aq'),al=$('#al'),emdl=$('#emdl'),
+ERRA={sid:'SID inválido.',user:'Use de 1 a 24 letras, números, ponto, _ ou -.',token:'Configure o token do bot admin primeiro.',eu:'Você não pode tirar o seu próprio acesso.',discord:'O Discord recusou. Confira as permissões do bot admin.'},
+SIDRE=/^(S-1-\d+(-\d+)+|[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i;
+function drawAdm(){if(!AD)return;
+  const q=aq.value.trim().toLowerCase(),I=AD.itens,L=I.filter(x=>!q||(x.user+' '+x.sid).toLowerCase().includes(q)),n=I.filter(x=>!x.off).length;
+  tween($('#atot'),I.length,Math.round,600);
+  $('#amid').textContent=`${I.filter(x=>x.online).length} online · ${n} ativos · ${I.filter(x=>x.admin&&!x.off).length} admins · ${I.length-n} suspensos`;
+  al.innerHTML=L.map(x=>`<div class="row${x.off?' dim':''}" data-s="${x.sid}"><div class="n">${x.user}<small>${x.sid}</small><div class="tags">${x.online?'<span class="tag">Online</span>':''}${x.admin?'<span class="tag">Admin</span>':''}${x.off?'<span class="tag">Suspenso</span>':''}${x.sid==AD.eu?'<span class="tag">Você</span>':''}</div></div><span class="val">${x.data.split('-').reverse().join('/')}</span><div class="acts"><button class="btn" data-a="e">Editar</button><button class="btn" data-a="d"${x.sid==AD.eu?' disabled':''}>Apagar</button></div></div>`).join('')||'<div class="grp">Nenhum usuário encontrado</div>'}
+async function loadAdm(){const r=await adm('lista');
+  if(!r||!r.ok){$('#amid').textContent='Não foi possível ler o canal';return}
+  AD=r;$('#atkn').hidden=r.token;drawAdm()}
+const enterAdm=loadAdm;
+async function editAdm(x){
+  $('#esid').value=x?x.sid:'';$('#esid').readOnly=!!x;$('#euser').value=x?x.user:'';$('#eadm').checked=!!(x&&x.admin);$('#eoff').checked=!!(x&&x.off);
+  $('#eh').textContent=x?'Editar usuário':'Adicionar usuário';
+  for(;;){
+    if(!await askOpt(emdl,'#eyes','#eno'))return;
+    const b={sid:$('#esid').value.trim().toUpperCase(),user:$('#euser').value.trim(),admin:$('#eadm').checked,off:$('#eoff').checked};
+    if(!SIDRE.test(b.sid)||!/^[\w.\-]{1,24}$/.test(b.user)){toast(SIDRE.test(b.sid)?ERRA.user:ERRA.sid);await wait(450);continue}
+    const r=await adm('salvar',b);
+    if(r&&r.ok){toast(x?'Usuário atualizado':'Usuário adicionado');return loadAdm()}
+    toast(ERRA[r&&r.motivo]||'Não foi possível salvar');if(r&&r.motivo=='token')$('#atkn').hidden=false;return}}
+aq.oninput=drawAdm;$('#aref').onclick=loadAdm;$('#aadd').onclick=()=>editAdm(null);$('#atk').onclick=()=>{$('#atkn').hidden=!$('#atkn').hidden};
+$('#atks').onclick=async()=>{const t=$('#atki').value.trim();if(!t)return;const r=await adm('token',{token:t});
+  if(r&&r.ok){$('#atki').value='';$('#atkn').hidden=true;AD&&(AD.token=true);toast('Token salvo neste PC')}else toast('Token inválido')};
+al.onclick=async e=>{const b=e.target.closest('button[data-a]');if(!b||!AD)return;const x=AD.itens.find(i=>i.sid==b.closest('.row').dataset.s);
+  if(b.dataset.a=='e')return editAdm(x);
+  if(!b._c){b._c=1;b.textContent='Confirmar';clearTimeout(b._t);b._t=setTimeout(()=>{b._c=0;b.textContent='Apagar'},4000);return}
+  b._c=0;const r=await adm('apagar',{sid:x.sid});
+  toast(r&&r.ok?(r.parcial?'Havia mensagem com vários SIDs: o SID ficou suspenso':'Conta apagada'):ERRA[r&&r.motivo]||'Não foi possível apagar');loadAdm()};
+let wasAdm=false;
+setInterval(async()=>{
+  try{const s=await(await fetch('/api/lic/estado',{cache:'no-store'})).json();
+    if(document.body.classList.contains('locked'))return;
+    if(!s.ok){location.reload();return}
+    if(s.admin!==wasAdm){wasAdm=s.admin;$('#nadm').hidden=$('#nadm2').hidden=!s.admin;pill(true);
+      if(!s.admin&&cur=='adm')$('#nav button[data-v=dash]').click()}
+    if(cur=='adm'&&s.admin&&!al.textContent.includes('Confirmar'))loadAdm();
+  }catch(e){}},10000);
+pill(true);document.fonts&&document.fonts.ready.then(()=>pill(true));
+frame();boot();
 </script>
 </body>
 </html>
@@ -2847,6 +2938,290 @@ def reverter_tudo():
     return {"ok": True, "revertidos": ok, "falhas": falhas, "admin": adm}
 
 
+# ---------- licença pelo Discord (sem servidor seu) ----------
+# Fluxo: o app lê o SID do PC. Se o SID não está no canal, mostra a tela de LIBERAÇÃO (SID + copiar).
+# Você posta no canal privado:  <SID>/usuario   -> o app passa sozinho para o LOGIN -> o cliente digita o mesmo usuário.
+# Formatos:  <SID>/usuario   |   <SID>/usuario/admin (vê a aba Admin)   |   <SID>/usuario/off (suspenso). A linha mais nova de cada SID vale.
+# Aba Admin: LÊ com o token abaixo (só leitura) e ESCREVE com o token de um 2º bot, guardado só no PC do admin (nunca neste arquivo).
+BOT_TOKEN = "MTUwMjA0NjQ3NzA0MjU4NTcyMg.GaCaSs.5LAQwuPqPOTkR-99NXT_MbYW-sNOXBHtWCEXHo"
+CANAL = "1568341391808012318"
+ADMIN_ID = ""                       # opcional: seu ID de usuário; se preenchido, só mensagens suas ou de bots valem
+AUTH = ISADM = False
+# Presença online: canal PRIVADO só para isso (ex.: #presenca). O mesmo bot do app precisa de "Ver canal",
+# "Enviar mensagens" e "Ler histórico" nesse canal. O envio é pela API REST: o bot NUNCA é ligado (fica offline).
+PRES_CANAL = ""                     # ID do canal #presenca (vazio = desliga a presença online)
+USER = ""
+PRES = {"mid": ""}
+SID_P = r"S-1-\d+(?:-\d+)+|[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}"
+SID_OK = re.compile(SID_P, re.I)
+LIC_RE = re.compile(r"(" + SID_P + r")\s*[/\\]\s*([\w.\-]{1,24})(?:\s*[/\\]\s*(admin|off)\b)?", re.A | re.I)
+
+
+def hwid():  # só como plano B se o SID não puder ser lido
+    v = reg_ler("HKLM", r"SOFTWARE\Microsoft\Cryptography", "MachineGuid") if winreg else None
+    return str(v[0]).strip().lower() if v else str(uuid.UUID(int=uuid.getnode()))
+
+
+def sid_pc():
+    # SID do Windows desta máquina (S-1-5-21-a-b-c, sem o número da conta): igual para qualquer usuário do mesmo PC
+    if "sid" not in CACHE:
+        m = re.search(r"S-1-5-21-\d+-\d+-\d+|S-1-\d+(?:-\d+)+", cmd(["whoami", "/user", "/fo", "csv", "/nh"], 15)[1])
+        CACHE["sid"] = m.group(0).upper() if m else hwid()
+    return CACHE["sid"]
+
+
+class _SemCanal(Exception):
+    code = 404
+
+
+def _discord(rota, metodo="GET", corpo=None, tok=None):
+    import urllib.request
+    req = urllib.request.Request("https://discord.com/api/v10/" + rota, method=metodo, data=None if corpo is None else json.dumps(corpo).encode("utf-8"),
+                                 headers={"Authorization": "Bot " + (tok or BOT_TOKEN), "User-Agent": "DiscordBot (https://tellez.app, 1.0)", "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        b = r.read()
+    return json.loads(b.decode("utf-8")) if b else {}
+
+
+def canal_id():
+    if CANAL.isdigit():  # também aceita o ID do canal
+        return CANAL
+    if "canal" not in CACHE:
+        for g in _discord("users/@me/guilds"):
+            for c in _discord(f"guilds/{g['id']}/channels"):
+                if c.get("type") == 0 and c.get("name", "").lower() == CANAL.lstrip("#").lower():
+                    CACHE["canal"] = c["id"]
+                    return c["id"]
+        raise _SemCanal()
+    return CACHE["canal"]
+
+
+def _msgs():
+    """Mensagens do canal, da mais nova para a mais antiga: (mensagem, [(SID, usuário, flag), ...])."""
+    antes = ""
+    for _ in range(200):
+        msgs = _discord(f"channels/{canal_id()}/messages?limit=100" + (f"&before={antes}" if antes else ""))
+        for m in msgs:
+            a = m.get("author", {})
+            if ADMIN_ID and a.get("id") != ADMIN_ID and not a.get("bot"):
+                continue
+            txt = re.sub(r"[​-‏‪-‮⁠﻿]", "", unicodedata.normalize("NFKC", m.get("content", "")))
+            yield m, [(c.upper(), u, f.lower()) for c, u, f in LIC_RE.findall(txt)]
+        if len(msgs) < 100:
+            return
+        antes = msgs[-1]["id"]
+
+
+def discord_usuario(sid):
+    for m, es in _msgs():
+        for c, u, f in reversed(es):  # dentro da mensagem, a última linha é a mais nova
+            if c == sid.upper():
+                return ("", False) if f == "off" else (u, f == "admin")
+    return "", False
+
+
+def _consulta():
+    sid, u, adm, m = sid_pc(), "", False, ""
+    try:
+        u, adm = discord_usuario(sid)
+    except Exception as e:
+        m = "config" if getattr(e, "code", 0) in (401, 403, 404) else "rede"
+    return sid, u, adm, m
+
+
+def lic_verificar():  # o SID está liberado no canal? (não entra no app: só decide entre liberação e login)
+    sid, u, adm, m = _consulta()
+    return {"ok": bool(u), "pc": sid, "motivo": m or ("" if u else "nao")}
+
+
+def lic_login(user):  # confere de novo no canal: o usuário digitado tem que ser o que está junto ao SID
+    global AUTH, ISADM, USER
+    sid, u, adm, m = _consulta()
+    AUTH = bool(u) and hmac.compare_digest(u.lower().encode(), str(user or "").strip().lower().encode())
+    ISADM = AUTH and adm
+    if AUTH:
+        USER = str(user).strip()
+    if u and not AUTH:
+        time.sleep(0.5)
+    return {"ok": AUTH, "admin": ISADM, "motivo": m or ("" if AUTH else "user" if u else "nao")}
+
+
+# ----- aba Admin: ler é com o token do app; escrever só com o token do bot admin, salvo neste PC -----
+def adm_arq():
+    return bk_arq().with_name("admin.dat")
+
+
+def adm_token():
+    try:
+        return adm_arq().read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+
+
+def adm_token_set(t):
+    try:
+        _discord("users/@me", tok=t)  # 401 se o token for inválido
+        adm_arq().write_text(t, encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
+def adm_lista():
+    vistos, out, on = set(), [], presenca_lista()
+    for m, es in _msgs():
+        for c, u, f in reversed(es):
+            if c not in vistos:
+                vistos.add(c)
+                out.append(dict(sid=c, user=u, admin=f == "admin", off=f == "off", online=c in on, data=m.get("timestamp", "")[:10]))
+    return sorted(out, key=lambda x: (not x["online"], x["user"].lower()))
+
+
+def _so_do_sid(sid):
+    # ids das mensagens que têm SÓ este SID (as únicas que dá para apagar sem atingir outros usuários) e quantas misturam outros SIDs
+    so, misto = [], 0
+    for m, es in _msgs():
+        s = {e[0] for e in es}
+        if sid in s:
+            if s == {sid}:
+                so.append(m["id"])
+            else:
+                misto += 1
+    return so, misto
+
+
+def _escrever(sid, user, flag=""):
+    _discord(f"channels/{canal_id()}/messages", "POST", {"content": f"{sid}/{user}" + (f"/{flag}" if flag else "")}, adm_token())
+
+
+def _apagar_msg(mid):
+    try:
+        _discord(f"channels/{canal_id()}/messages/{mid}", "DELETE", tok=adm_token())
+        return True
+    except Exception:
+        return False
+
+
+def adm_api(op, c):
+    eu = sid_pc()
+    if op == "lista":
+        return {"ok": True, "eu": eu, "token": bool(adm_token()), "itens": adm_lista()}
+    if op == "token":
+        return {"ok": adm_token_set(str(c.get("token", "")).strip())}
+    sid = str(c.get("sid", "")).strip().upper()
+    if not SID_OK.fullmatch(sid):
+        return {"ok": False, "motivo": "sid"}
+    if not adm_token():
+        return {"ok": False, "motivo": "token"}
+    try:
+        if op == "salvar":  # adicionar, renomear, virar/deixar de ser admin, suspender/reativar: tudo é uma linha nova (a mais nova vale)
+            user, adm, off = str(c.get("user", "")).strip(), bool(c.get("admin")), bool(c.get("off"))
+            if not re.fullmatch(r"[\w.\-]{1,24}", user, re.A):
+                return {"ok": False, "motivo": "user"}
+            if sid == eu and (off or not adm):
+                return {"ok": False, "motivo": "eu"}  # não deixa o admin se trancar para fora
+            antigas, _ = _so_do_sid(sid)
+            _escrever(sid, user, "off" if off else "admin" if adm else "")
+            for i in antigas:  # limpeza das linhas antigas desse SID (se o bot não puder apagar, a linha nova já vale)
+                _apagar_msg(i)
+            return {"ok": True}
+        if op == "apagar":
+            if sid == eu:
+                return {"ok": False, "motivo": "eu"}
+            so, misto = _so_do_sid(sid)
+            falhou = sum(not _apagar_msg(i) for i in so)
+            if misto or falhou:  # sobrou mensagem que não dá para apagar: o SID fica suspenso
+                _escrever(sid, "x", "off")
+            return {"ok": True, "parcial": bool(misto or falhou)}
+    except Exception:
+        return {"ok": False, "motivo": "discord"}
+    return {"ok": False, "motivo": "op"}
+
+
+def _pres(met, rota, corpo=None):
+    return _discord(f"channels/{PRES_CANAL}/{rota}", met, corpo)  # REST puro: não conecta o bot ao Discord
+
+
+def presenca_limpar():  # apaga mensagens antigas deste PC no canal de presença
+    sid = sid_pc()
+    for m in _pres("GET", "messages?limit=100"):
+        if m.get("content", "").upper().startswith(sid + "/"):
+            try:
+                _pres("DELETE", "messages/" + m["id"])
+            except Exception:
+                pass
+
+
+def presenca_sair():
+    try:
+        if PRES["mid"] and PRES_CANAL:
+            _pres("DELETE", "messages/" + PRES["mid"])
+            PRES["mid"] = ""
+    except Exception:
+        pass
+
+
+def presenca():  # enquanto logado, mantém UMA mensagem sua no canal e a edita a cada 30 s
+    feito = False
+    while True:
+        espera = 30
+        try:
+            if PRES_CANAL and AUTH:
+                if not feito:
+                    presenca_limpar()
+                    PRES["mid"], feito = "", True
+                txt = f"{sid_pc()}/{USER}/{int(time.time())}"
+                if PRES["mid"]:
+                    try:
+                        _pres("PATCH", "messages/" + PRES["mid"], {"content": txt})
+                    except Exception:
+                        PRES["mid"] = ""
+                if not PRES["mid"]:
+                    PRES["mid"] = _pres("POST", "messages", {"content": txt})["id"]
+            else:
+                espera = 3
+                if PRES["mid"]:
+                    presenca_sair()
+                    feito = False
+        except Exception:
+            pass
+        time.sleep(espera)
+
+
+def presenca_lista():  # SIDs que editaram a mensagem nos últimos 90 s
+    from datetime import datetime, timezone
+    on = set()
+    if not PRES_CANAL:
+        return on
+    try:
+        agora = datetime.now(timezone.utc)
+        for m in _pres("GET", "messages?limit=100"):
+            t = datetime.fromisoformat(m.get("edited_timestamp") or m["timestamp"])
+            mm = re.match("(" + SID_P + ")/", m.get("content", ""), re.I)
+            if mm and (agora - t).total_seconds() < 90:
+                on.add(mm.group(1).upper())
+    except Exception:
+        pass
+    return on
+
+
+def vigiar():  # cargo/suspensão ao vivo: reconsulta o canal de licenças a cada 15 s
+    global AUTH, ISADM
+    while True:
+        time.sleep(15)
+        if not AUTH:
+            continue
+        sid, u, adm, m = _consulta()
+        if m:
+            continue  # erro de rede: mantém o estado atual
+        AUTH = bool(u) and u.lower() == USER.lower()
+        ISADM = AUTH and adm
+
+
+import atexit
+atexit.register(presenca_sair)
+
+
 class Handler(BaseHTTPRequestHandler):
     def _enviar(s, corpo, tipo):
         s.send_response(200)
@@ -2859,32 +3234,43 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(s):
         u = urlparse(s.path)
         q = parse_qs(u.query)
-        if not REAL or s.headers.get("X-Token") != TOKEN:
+        if s.headers.get("X-Token") != TOKEN:
             return s.send_error(403)
         n = int(s.headers.get("Content-Length") or 0)
         try:
             corpo = json.loads(s.rfile.read(n) or b"{}") if n else {}
         except Exception:
             corpo = {}
+        p = u.path
         try:
-            if u.path == "/api/otimizar":
+            if p == "/api/lic/verificar":
+                r = lic_verificar()
+            elif p == "/api/lic/login":
+                r = lic_login(corpo.get("user"))
+            elif not (REAL and AUTH):
+                return s.send_error(403)
+            elif p.startswith("/api/adm/"):
+                if not ISADM:
+                    return s.send_error(403)
+                r = adm_api(p[9:], corpo)
+            elif p == "/api/otimizar":
                 f = {"memoria": liberar_memoria, "temp": limpar_temp}.get(q.get("etapa", [""])[0])
                 if not f:
                     return s.send_error(403)
                 r = f()
-            elif u.path == "/api/limpeza/escanear":
+            elif p == "/api/limpeza/escanear":
                 r = {"ok": escanear()}
-            elif u.path == "/api/limpeza/limpar":
+            elif p == "/api/limpeza/limpar":
                 r = {"ok": limpar(set(corpo.get("ids", [])))}
-            elif u.path == "/api/windows/analisar":
+            elif p == "/api/windows/analisar":
                 r = {"ok": analisar()}
-            elif u.path == "/api/windows/aplicar":
+            elif p == "/api/windows/aplicar":
                 r = {"ok": aplicar(corpo.get("mudancas", {}))}
-            elif u.path == "/api/cfg/pasta":
+            elif p == "/api/cfg/pasta":
                 r = {"ok": abrir_pasta_dados()}
-            elif u.path == "/api/cfg/reverter":
+            elif p == "/api/cfg/reverter":
                 r = reverter_tudo()
-            elif u.path == "/api/admin/elevar":
+            elif p == "/api/admin/elevar":
                 r = elevar()
             else:
                 return s.send_error(404)
@@ -2894,25 +3280,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(s):
         global _ultimo
-        if s.path.startswith("/api/dados"):
-            _ultimo = time.time()
-            if not REAL:
-                return s.send_error(404)
-            corpo, tipo = json.dumps(DADOS).encode(), "application/json"
-        elif s.path.startswith("/api/perifericos/estado"):
-            if not REAL:
-                return s.send_error(404)
-            corpo, tipo = json.dumps(estado_w("per")).encode(), "application/json"
-        elif s.path.startswith("/api/windows/estado"):
-            if not REAL:
-                return s.send_error(404)
-            corpo, tipo = json.dumps(estado_w()).encode(), "application/json"
-        elif s.path.startswith("/api/limpeza/estado"):
-            if not REAL:
-                return s.send_error(404)
-            corpo, tipo = json.dumps(estado()).encode(), "application/json"
-        elif s.path in ("/", "/index.html"):
+        _ultimo = time.time()
+        p = s.path.split("?")[0]
+        if p == "/api/lic/estado":
+            corpo, tipo = json.dumps({"ok": AUTH, "admin": ISADM}).encode(), "application/json"
+        elif p in ("/", "/index.html"):
             corpo, tipo = HTML.replace("__TOKEN__", TOKEN).encode("utf-8"), "text/html; charset=utf-8"
+        elif p in ("/api/dados", "/api/perifericos/estado", "/api/windows/estado", "/api/limpeza/estado"):
+            if not (REAL and AUTH):
+                return s.send_error(403)
+            d = {"/api/dados": lambda: DADOS, "/api/perifericos/estado": lambda: estado_w("per"), "/api/windows/estado": estado_w, "/api/limpeza/estado": estado}[p]()
+            corpo, tipo = json.dumps(d).encode(), "application/json"
         else:
             return s.send_error(404)
         s._enviar(corpo, tipo)
@@ -2929,7 +3307,7 @@ def iniciar_servidor():
         except OSError:
             continue
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    for f in (amostrar, carregar_nomes, amostrar_temp):
+    for f in (amostrar, carregar_nomes, amostrar_temp, presenca, vigiar):
         threading.Thread(target=f, daemon=True).start()
     return f"http://127.0.0.1:{srv.server_address[1]}/"
 
